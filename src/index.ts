@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 import fastifyCors from "@fastify/cors";
 import fastifySwagger from "@fastify/swagger";
 import fastifyApiReference from "@scalar/fastify-api-reference";
@@ -12,18 +10,33 @@ import {
 } from "fastify-type-provider-zod";
 
 import { auth } from "./lib/auth.js";
+import { env } from "./lib/env.js";
 import { aiRoutes } from "./routes/ai.js";
 import { homeRoutes } from "./routes/home.js";
 import { meRoutes } from "./routes/me.js";
 import { statsRoutes } from "./routes/stats.js";
 import { workoutPlanRoutes } from "./routes/workout-plan.js";
 
-const app = Fastify({ logger: true });
+const envToLogger = {
+  development: {
+    transport: {
+      target: 'pino-pretty',
+      options: {
+        translateTime: 'HH:MM:ss Z',
+        ignore: 'pid,hostname',
+      },
+    },
+  },
+  production: true,
+  test: false,
+}
+
+const app = Fastify({ logger: envToLogger[env.NODE_ENV] || false });
 app.setSerializerCompiler(serializerCompiler);
 app.setValidatorCompiler(validatorCompiler);
 
 await app.register(fastifyCors, {
-  origin: ["http://localhost:3000"],
+  origin: [env.WEB_APP_BASE_URL],
   credentials: true,
 });
 
@@ -34,7 +47,7 @@ await app.register(fastifySwagger, {
       description: "API para o bootcamp de treinos do FSC",
       version: "1.0.0",
     },
-    servers: [{ description: "localhost", url: "http://localhost:8081" }],
+    servers: [{ description: "API Base URL", url: env.API_BASE_URL }],
   },
   transform: jsonSchemaTransform,
 });
@@ -65,6 +78,7 @@ app.withTypeProvider<ZodTypeProvider>().route({
 app.route({
   method: ["GET", "POST"],
   url: "/api/auth/*",
+  schema: { hide: true },
   async handler(request, reply) {
     try {
       const url = new URL(request.url, `http://${request.headers.host}`);
@@ -98,7 +112,7 @@ await app.register(workoutPlanRoutes, { prefix: "/workout-plans" });
 await app.register(aiRoutes, { prefix: "/ai" });
 
 try {
-  await app.listen({ port: Number(process.env.PORT) || 8081 });
+  await app.listen({ port: env.PORT });
 } catch (err) {
   app.log.error(err);
   process.exit(1);
